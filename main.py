@@ -1,57 +1,21 @@
+from omdb import fetch_multiple_movies as fetch_omdb_movies
+from tmdb import fetch_multiple_tmdb_movies
+from utils import save_to_database
 import os
-import time
-import pandas as pd
-from sqlalchemy import create_engine
 from dotenv import load_dotenv
-from api_wrappers import get_tmdb_all_movies
+import pandas as pd
 
-# Load environment variables from .env file
-load_dotenv()
+# Load environment variables from .env file in the same directory
+load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
-# Retrieve the environment variables
-TMDB_API_KEY = os.getenv('TMDB_API_KEY')
-DATABASE_URL = os.getenv('DATABASE_URL')
+def fetch_and_save_data(movie_titles):
+    omdb_data = fetch_omdb_movies(movie_titles)
+    tmdb_data = fetch_multiple_tmdb_movies(movie_titles)
+    
+    combined_data = pd.merge(omdb_data, tmdb_data, left_on='Title', right_on='title', suffixes=('_omdb', '_tmdb'))
+    save_to_database(combined_data)
 
-def retrieve_all_movies():
-    all_movies = []
-    page = 1
-
-    while True:
-        data = get_tmdb_all_movies(TMDB_API_KEY, page)
-        if 'results' in data:
-            all_movies.extend(data['results'])
-            if data['page'] >= data['total_pages']:
-                break
-            page += 1
-            time.sleep(0.25)  # Handle API rate limiting
-        else:
-            break
-
-    return all_movies
-
-def import_data_to_db(movies_data):
-    engine = create_engine(DATABASE_URL)
-    conn = engine.connect()
-
-    conn.execute("""
-    CREATE TABLE IF NOT EXISTS movies (
-        id SERIAL PRIMARY KEY,
-        title VARCHAR(255),
-        release_date DATE,
-        genre VARCHAR(255),
-        director VARCHAR(255)
-    )
-    """)
-
-    for movie in movies_data:
-        conn.execute(f"""
-        INSERT INTO movies (title, release_date, genre, director)
-        VALUES ('{movie['title']}', '{movie['release_date']}', '{movie['genre']}', '{movie['director']}')
-        """)
-
-    conn.close()
-
+# Example usage
 if __name__ == "__main__":
-    movies = retrieve_all_movies()
-    print(f"Retrieved {len(movies)} movies")
-    import_data_to_db(movies)
+    movie_titles = ['Inception', 'The Matrix', 'Interstellar']
+    fetch_and_save_data(movie_titles)
